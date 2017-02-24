@@ -101,7 +101,7 @@ namespace Microsoft.AspNetCore.Http.Headers
             }
             set
             {
-                Headers.Set(HeaderNames.ContentLength, value.HasValue ? HeaderUtilities.FormatInt64(value.Value) : null);
+                Headers.Set(HeaderNames.ContentLength, value.HasValue ? HeaderUtilities.FormatNonNegativeInt64(value.Value) : null);
             }
         }
 
