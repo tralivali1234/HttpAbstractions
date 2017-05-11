@@ -14,13 +14,8 @@ namespace Microsoft.AspNetCore.Http
     /// </summary>
     public class HeaderDictionary : IHeaderDictionary
     {
-#if NETSTANDARD1_3
         private static readonly string[] EmptyKeys = Array.Empty<string>();
         private static readonly StringValues[] EmptyValues = Array.Empty<StringValues>();
-#else
-        private static readonly string[] EmptyKeys = new string[0];
-        private static readonly StringValues[] EmptyValues = new StringValues[0];
-#endif
         private static readonly Enumerator EmptyEnumerator = new Enumerator();
         // Pre-box
         private static readonly IEnumerator<KeyValuePair<string, StringValues>> EmptyIEnumeratorType = EmptyEnumerator;
@@ -106,7 +101,7 @@ namespace Microsoft.AspNetCore.Http
                 var rawValue = this[HeaderNames.ContentLength];
                 if (rawValue.Count == 1 &&
                     !string.IsNullOrWhiteSpace(rawValue[0]) &&
-                    HeaderUtilities.TryParseInt64(new StringSegment(rawValue[0]).Trim(), out value))
+                    HeaderUtilities.TryParseNonNegativeInt64(new StringSegment(rawValue[0]).Trim(), out value))
                 {
                     return value;
                 }
@@ -117,7 +112,7 @@ namespace Microsoft.AspNetCore.Http
             {
                 if (value.HasValue)
                 {
-                    this[HeaderNames.ContentLength] = HeaderUtilities.FormatInt64(value.Value);
+                    this[HeaderNames.ContentLength] = HeaderUtilities.FormatNonNegativeInt64(value.Value);
                 }
                 else
                 {

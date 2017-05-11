@@ -17,7 +17,7 @@ namespace Microsoft.AspNetCore.Builder.Internal
 
         public ApplicationBuilder(IServiceProvider serviceProvider)
         {
-            Properties = new Dictionary<string, object>();
+            Properties = new Dictionary<string, object>(StringComparer.Ordinal);
             ApplicationServices = serviceProvider;
         }
 
@@ -29,7 +29,7 @@ namespace Microsoft.AspNetCore.Builder.Internal
 
         private ApplicationBuilder(ApplicationBuilder builder)
         {
-            Properties = builder.Properties;
+            Properties = new CopyOnWriteDictionary<string, object>(builder.Properties, StringComparer.Ordinal);
         }
 
         public IServiceProvider ApplicationServices

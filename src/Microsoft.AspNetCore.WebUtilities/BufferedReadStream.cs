@@ -162,17 +162,7 @@ namespace Microsoft.AspNetCore.WebUtilities
         {
             _inner.Write(buffer, offset, count);
         }
-#if NET451
-        public override IAsyncResult BeginWrite(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
-        {
-            return _inner.BeginWrite(buffer, offset, count, callback, state);
-        }
 
-        public override void EndWrite(IAsyncResult asyncResult)
-        {
-            _inner.EndWrite(asyncResult);
-        }
-#endif
         public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
             return _inner.WriteAsync(buffer, offset, count, cancellationToken);
@@ -211,58 +201,7 @@ namespace Microsoft.AspNetCore.WebUtilities
 
             return await _inner.ReadAsync(buffer, offset, count, cancellationToken);
         }
-#if NET451
-        // We only anticipate using ReadAsync
-        public override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
-        {
-            ValidateBuffer(buffer, offset, count);
 
-            // Drain buffer
-            if (_bufferCount > 0)
-            {
-                int toCopy = Math.Min(_bufferCount, count);
-                Buffer.BlockCopy(_buffer, _bufferOffset, buffer, offset, toCopy);
-                _bufferOffset += toCopy;
-                _bufferCount -= toCopy;
-
-                TaskCompletionSource<int> tcs = new TaskCompletionSource<int>(state);
-                tcs.TrySetResult(toCopy);
-                if (callback != null)
-                {
-                    // Offload callbacks to avoid stack dives on sync completions.
-                    var ignored = Task.Run(() =>
-                    {
-                        try
-                        {
-                            callback(tcs.Task);
-                        }
-                        catch (Exception)
-                        {
-                            // Suppress exceptions on background threads.
-                        }
-                    });
-                }
-                return tcs.Task;
-            }
-
-            return _inner.BeginRead(buffer, offset, count, callback, state);
-        }
-
-        public override int EndRead(IAsyncResult asyncResult)
-        {
-            if (asyncResult == null)
-            {
-                throw new ArgumentNullException(nameof(asyncResult));
-            }
-
-            Task<int> task = asyncResult as Task<int>;
-            if (task != null)
-            {
-                return task.GetAwaiter().GetResult();
-            }
-            return _inner.EndRead(asyncResult);
-        }
-#endif
         public bool EnsureBuffered()
         {
             if (_bufferCount > 0)

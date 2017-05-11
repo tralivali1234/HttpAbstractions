@@ -108,13 +108,6 @@ namespace Microsoft.AspNetCore.WebUtilities
             }
         }
 
-#if NET451 
-        public override void Close()
-        {
-            Dispose(true);
-        }
-#endif
-
         protected override void Dispose(bool disposing)
         {
             if (disposing && _stream != null)

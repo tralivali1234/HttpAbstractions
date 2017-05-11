@@ -34,24 +34,6 @@ namespace Microsoft.AspNetCore.WebUtilities.Test
             Assert.Equal(expectedData, memoryStream.ToArray());
         }
 
-#if NET452
-        [Fact]
-        public async Task DoesNotFlush_UnderlyingStream_OnClosingWriter()
-        {
-            // Arrange
-            var stream = new TestMemoryStream();
-            var writer = new HttpResponseStreamWriter(stream, Encoding.UTF8);
-
-            // Act
-            await writer.WriteAsync("Hello");
-            writer.Close();
-
-            // Assert
-            Assert.Equal(0, stream.FlushCallCount);
-            Assert.Equal(0, stream.FlushAsyncCallCount);
-        }
-#endif
-
         [Fact]
         public async Task DoesNotFlush_UnderlyingStream_OnDisposingWriter()
         {
@@ -67,23 +49,6 @@ namespace Microsoft.AspNetCore.WebUtilities.Test
             Assert.Equal(0, stream.FlushCallCount);
             Assert.Equal(0, stream.FlushAsyncCallCount);
         }
-
-#if NET452
-        [Fact]
-        public async Task DoesNotClose_UnderlyingStream_OnDisposingWriter()
-        {
-            // Arrange
-            var stream = new TestMemoryStream();
-            var writer = new HttpResponseStreamWriter(stream, Encoding.UTF8);
-
-            // Act
-            await writer.WriteAsync("Hello");
-            writer.Close();
-
-            // Assert
-            Assert.Equal(0, stream.CloseCallCount);
-        }
-#endif
 
         [Fact]
         public async Task DoesNotDispose_UnderlyingStream_OnDisposingWriter()
@@ -113,11 +78,7 @@ namespace Microsoft.AspNetCore.WebUtilities.Test
             await writer.WriteAsync(new string('a', byteLength));
 
             // Act
-#if NET452
-            writer.Close();
-#else
             writer.Dispose();
-#endif
 
             // Assert
             Assert.Equal(0, stream.FlushCallCount);
@@ -232,7 +193,7 @@ namespace Microsoft.AspNetCore.WebUtilities.Test
             var writer = new HttpResponseStreamWriter(stream, Encoding.UTF8);
 
             await writer.WriteAsync(new string('a', byteLength));
-            await Assert.ThrowsAsync<IOException>(() =>  writer.FlushAsync());
+            await Assert.ThrowsAsync<IOException>(() => writer.FlushAsync());
 
             // Act
             writer.Dispose();
@@ -337,10 +298,6 @@ namespace Microsoft.AspNetCore.WebUtilities.Test
 
         [Theory]
         [InlineData("你好世界", "utf-16")]
-#if !NETCOREAPP1_1
-        // CoreCLR does not like shift_jis as an encoding.
-        [InlineData("こんにちは世界", "shift_jis")]
-#endif
         [InlineData("హలో ప్రపంచ", "iso-8859-1")]
         [InlineData("வணக்கம் உலக", "utf-32")]
         public async Task WritesData_InExpectedEncoding(string data, string encodingName)
@@ -368,12 +325,6 @@ namespace Microsoft.AspNetCore.WebUtilities.Test
         [InlineData('你', 1023, "utf-16")]
         [InlineData('你', 1024, "utf-16")]
         [InlineData('你', 1050, "utf-16")]
-#if !NETCOREAPP1_1
-        // CoreCLR does not like shift_jis as an encoding.
-        [InlineData('こ', 1023, "shift_jis")]
-        [InlineData('こ', 1024, "shift_jis")]
-        [InlineData('こ', 1050, "shift_jis")]
-#endif
         [InlineData('హ', 1023, "iso-8859-1")]
         [InlineData('హ', 1024, "iso-8859-1")]
         [InlineData('హ', 1050, "iso-8859-1")]
@@ -501,14 +452,6 @@ namespace Microsoft.AspNetCore.WebUtilities.Test
                 }
                 return base.WriteAsync(buffer, offset, count, cancellationToken);
             }
-
-#if NET452
-            public override void Close()
-            {
-                CloseCallCount++;
-                base.Close();
-            }
-#endif
 
             protected override void Dispose(bool disposing)
             {

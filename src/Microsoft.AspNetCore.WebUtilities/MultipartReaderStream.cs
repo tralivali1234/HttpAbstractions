@@ -126,17 +126,7 @@ namespace Microsoft.AspNetCore.WebUtilities
         {
             throw new NotSupportedException();
         }
-#if NET451
-        public override IAsyncResult BeginWrite(byte[] buffer, int offset, int size, AsyncCallback callback, object state)
-        {
-            throw new NotSupportedException();
-        }
 
-        public override void EndWrite(IAsyncResult asyncResult)
-        {
-            throw new NotSupportedException();
-        }
-#endif
         public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
             throw new NotSupportedException();
@@ -168,54 +158,7 @@ namespace Microsoft.AspNetCore.WebUtilities
             }
             return read;
         }
-#if NET451
-        public override IAsyncResult BeginRead(byte[] buffer, int offset, int size, AsyncCallback callback, object state)
-        {
-            var tcs = new TaskCompletionSource<int>(state);
-            InternalReadAsync(buffer, offset, size, callback, tcs);
-            return tcs.Task;
-        }
 
-        private async void InternalReadAsync(byte[] buffer, int offset, int size, AsyncCallback callback, TaskCompletionSource<int> tcs)
-        {
-            try
-            {
-                int read = await ReadAsync(buffer, offset, size);
-                tcs.TrySetResult(read);
-            }
-            catch (Exception ex)
-            {
-                tcs.TrySetException(ex);
-            }
-
-            if (callback != null)
-            {
-                // Offload callbacks to avoid stack dives on sync completions.
-                var ignored = Task.Run(() =>
-                {
-                    try
-                    {
-                        callback(tcs.Task);
-                    }
-                    catch (Exception)
-                    {
-                        // Suppress exceptions on background threads.
-                    }
-                });
-            }
-        }
-
-        public override int EndRead(IAsyncResult asyncResult)
-        {
-            if (asyncResult == null)
-            {
-                throw new ArgumentNullException(nameof(asyncResult));
-            }
-
-            var task = (Task<int>)asyncResult;
-            return task.GetAwaiter().GetResult();
-        }
-#endif
         public override int Read(byte[] buffer, int offset, int count)
         {
             if (_finished)
@@ -231,10 +174,8 @@ namespace Microsoft.AspNetCore.WebUtilities
             var bufferedData = _innerStream.BufferedData;
 
             // scan for a boundary match, full or partial.
-            int matchOffset;
-            int matchCount;
             int read;
-            if (SubMatch(bufferedData, _boundary.BoundaryBytes, out matchOffset, out matchCount))
+            if (SubMatch(bufferedData, _boundary.BoundaryBytes, out var matchOffset, out var matchCount))
             {
                 // We found a possible match, return any data before it.
                 if (matchOffset > bufferedData.Offset)

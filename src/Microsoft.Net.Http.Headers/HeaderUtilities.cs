@@ -12,7 +12,8 @@ namespace Microsoft.Net.Http.Headers
 {
     public static class HeaderUtilities
     {
-        private static readonly int _int64MaxStringLength = 20;
+        private static readonly int _int64MaxStringLength = 19;
+        private static readonly int _qualityValueMaxCharCount = 10; // Little bit more permissive than RFC7231 5.3.1
         private const string QualityName = "q";
         internal const string BytesUnit = "bytes";
 
@@ -62,9 +63,8 @@ namespace Microsoft.Net.Http.Headers
             {
                 // Note that the RFC requires decimal '.' regardless of the culture. I.e. using ',' as decimal
                 // separator is considered invalid (even if the current culture would allow it).
-                double qualityValue;
-                if (double.TryParse(qualityParameter.Value, NumberStyles.AllowDecimalPoint,
-                    NumberFormatInfo.InvariantInfo, out qualityValue))
+                if (TryParseQualityDouble(qualityParameter.Value, 0, out var qualityValue, out var length))
+
                 {
                     return qualityValue;
                 }
@@ -269,7 +269,7 @@ namespace Microsoft.Net.Http.Headers
                     var tokenLength = HttpRuleParser.GetTokenLength(headerValues[i], current);
                     if (tokenLength == targetValue.Length
                         && string.Compare(headerValues[i], current, targetValue, 0, tokenLength, StringComparison.OrdinalIgnoreCase) == 0
-                        && TryParseInt64FromHeaderValue(current + tokenLength, headerValues[i], out seconds))
+                        && TryParseNonNegativeInt64FromHeaderValue(current + tokenLength, headerValues[i], out seconds))
                     {
                         // Token matches target value and seconds were parsed
                         value = TimeSpan.FromSeconds(seconds);
@@ -342,7 +342,7 @@ namespace Microsoft.Net.Http.Headers
             return false;
         }
 
-        private static unsafe bool TryParseInt64FromHeaderValue(int startIndex, string headerValue, out long result)
+        private static unsafe bool TryParseNonNegativeInt64FromHeaderValue(int startIndex, string headerValue, out long result)
         {
             // Trim leading whitespace
             startIndex += HttpRuleParser.GetWhitespaceLength(headerValue, startIndex);
@@ -359,7 +359,7 @@ namespace Microsoft.Net.Http.Headers
             startIndex += HttpRuleParser.GetWhitespaceLength(headerValue, startIndex);
 
             // Try parse the number
-            if (TryParseInt64(new StringSegment(headerValue, startIndex, HttpRuleParser.GetNumberLength(headerValue, startIndex, false)), out result))
+            if (TryParseNonNegativeInt64(new StringSegment(headerValue, startIndex, HttpRuleParser.GetNumberLength(headerValue, startIndex, false)), out result))
             {
                 return true;
             }
@@ -368,9 +368,9 @@ namespace Microsoft.Net.Http.Headers
             return false;
         }
 
-        internal static bool TryParseInt32(string value, out int result)
+        internal static bool TryParseNonNegativeInt32(string value, out int result)
         {
-            return TryParseInt32(new StringSegment(value), out result);
+            return TryParseNonNegativeInt32(new StringSegment(value), out result);
         }
 
         /// <summary>
@@ -388,12 +388,12 @@ namespace Microsoft.Net.Http.Headers
         /// result will be overwritten.
         /// </param>
         /// <returns><code>true</code> if parsing succeeded; otherwise, <code>false</code>.</returns>
-        public static bool TryParseInt64(string value, out long result)
+        public static bool TryParseNonNegativeInt64(string value, out long result)
         {
-            return TryParseInt64(new StringSegment(value), out result);
+            return TryParseNonNegativeInt64(new StringSegment(value), out result);
         }
 
-        internal static unsafe bool TryParseInt32(StringSegment value, out int result)
+        internal static unsafe bool TryParseNonNegativeInt32(StringSegment value, out int result)
         {
             if (string.IsNullOrEmpty(value.Buffer) || value.Length == 0)
             {
@@ -444,7 +444,7 @@ namespace Microsoft.Net.Http.Headers
         /// originally supplied in result will be overwritten.
         /// </param>
         /// <returns><code>true</code> if parsing succeeded; otherwise, <code>false</code>.</returns>
-        public static unsafe bool TryParseInt64(StringSegment value, out long result)
+        public static unsafe bool TryParseNonNegativeInt64(StringSegment value, out long result)
         {
             if (string.IsNullOrEmpty(value.Buffer) || value.Length == 0)
             {
@@ -480,32 +480,114 @@ namespace Microsoft.Net.Http.Headers
             }
         }
 
+        // Strict and fast RFC7231 5.3.1 Quality value parser (and without memory allocation)
+        // See https://tools.ietf.org/html/rfc7231#section-5.3.1
+        // Check is made to verify if the value is between 0 and 1 (and it returns False if the check fails).
+        internal static bool TryParseQualityDouble(string input, int startIndex, out double quality, out int length)
+        {
+            quality = 0;
+            length = 0;
+
+            var inputLength = input.Length;
+            var current = startIndex;
+            var limit = startIndex + _qualityValueMaxCharCount;
+
+            var intPart = 0;
+            var decPart = 0;
+            var decPow = 1;
+
+            if (current >= inputLength)
+            {
+                return false;
+            }
+
+            var ch = input[current];
+
+            if (ch >= '0' && ch <= '1') // Only values between 0 and 1 are accepted, according to RFC
+            {
+                intPart = ch - '0';
+                current++;
+            }
+            else
+            {
+                // The RFC doesn't allow decimal values starting with dot. I.e. value ".123" is invalid. It must be in the
+                // form "0.123".
+                return false;
+            }
+
+            if (current < inputLength)
+            {
+                ch = input[current];
+
+                if (ch >= '0' && ch <= '9')
+                {
+                    // The RFC accepts only one digit before the dot
+                    return false;
+                }
+
+                if (ch == '.')
+                {
+                    current++;
+
+                    while (current < inputLength)
+                    {
+                        ch = input[current];
+                        if (ch >= '0' && ch <= '9')
+                        {
+                            if (current >= limit)
+                            {
+                                return false;
+                            }
+
+                            decPart = decPart * 10 + ch - '0';
+                            decPow *= 10;
+                            current++;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (decPart != 0)
+            {
+                quality = intPart + decPart / (double)decPow;
+            }
+            else
+            {
+                quality = intPart;
+            }
+
+            if (quality > 1)
+            {
+                // reset quality
+                quality = 0;
+                return false;
+            }
+
+            length = current - startIndex;
+            return true;
+        }
+
         /// <summary>
-        /// Converts the signed 64-bit numeric value to its equivalent string representation.
+        /// Converts the non-negative 64-bit numeric value to its equivalent string representation.
         /// </summary>
         /// <param name="value">
         /// The number to convert.
         /// </param>
         /// <returns>
-        /// The string representation of the value of this instance, consisting of a minus sign if the value is
-        /// negative, and a sequence of digits ranging from 0 to 9 with no leading zeroes.
+        /// The string representation of the value of this instance, consisting of a sequence of digits ranging from 0 to 9 with no leading zeroes.
         /// </returns>
-        public unsafe static string FormatInt64(long value)
+        public unsafe static string FormatNonNegativeInt64(long value)
         {
-            var position = _int64MaxStringLength;
-            var negative = false;
-
             if (value < 0)
             {
-                // Not possible to compute absolute value of MinValue, return the exact string instead.
-                if (value == long.MinValue)
-                {
-                    return "-9223372036854775808";
-                }
-                negative = true;
-                value = -value;
+                throw new ArgumentOutOfRangeException(nameof(value), value, "The value to be formatted must be non-negative.");
             }
 
+            var position = _int64MaxStringLength;
             char* charBuffer = stackalloc char[_int64MaxStringLength];
 
             do
@@ -516,11 +598,6 @@ namespace Microsoft.Net.Http.Headers
                 value = quotient;
             }
             while (value != 0);
-
-            if (negative)
-            {
-                charBuffer[--position] = '-';
-            }
 
             return new string(charBuffer, position, _int64MaxStringLength - position);
         }
